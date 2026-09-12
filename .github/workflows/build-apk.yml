@@ -1,5 +1,6 @@
 name: Build Android APK
 
+# Trigger on push or manual trigger (sync trigger)
 on:
   push:
     branches: [ "**" ]
