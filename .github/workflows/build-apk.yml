@@ -28,6 +28,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+          cache-disabled: true
 
       - name: Prepare environment and keystore
         run: |
@@ -40,7 +41,7 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          gradle assembleDebug --stacktrace --no-daemon
+          gradle clean assembleDebug --stacktrace --no-daemon --no-configuration-cache --no-build-cache
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
