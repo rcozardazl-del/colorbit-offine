@@ -13,10 +13,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -24,10 +24,13 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Prepare environment files
+      - name: Prepare environment and keystore
         run: |
           touch .env
           cp -n .env.example .env || true
+          if [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
 
       - name: Build Debug APK
         run: |
