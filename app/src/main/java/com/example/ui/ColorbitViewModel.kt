@@ -72,6 +72,8 @@ class ColorbitViewModel(application: Application) : AndroidViewModel(application
     val p2pSwarmState = p2pService.swarmState
     val p2pListings = p2pService.listings
     val myP2PSales = p2pService.mySales
+    val p2pLeaderboard = p2pService.leaderboardEntries
+    val leaderboardEntries = p2pLeaderboard
 
     private val _statusNotification = MutableStateFlow<String?>(null)
     val statusNotification: StateFlow<String?> = _statusNotification.asStateFlow()
@@ -79,11 +81,26 @@ class ColorbitViewModel(application: Application) : AndroidViewModel(application
     private val _offlineDialogInfo = MutableStateFlow<OfflineEarningsResult?>(null)
     val offlineDialogInfo: StateFlow<OfflineEarningsResult?> = _offlineDialogInfo.asStateFlow()
 
+    private val _needsInitialDifficultySelection = MutableStateFlow(!repo.hasChosenDifficulty())
+    val needsInitialDifficultySelection: StateFlow<Boolean> = _needsInitialDifficultySelection.asStateFlow()
+
+    private val _seasonInfo = MutableStateFlow(repo.loadSeasonInfo())
+    val seasonInfo: StateFlow<com.example.model.SeasonInfo> = _seasonInfo.asStateFlow()
+
+    private val _showSeasonalWipeDialog = MutableStateFlow(false)
+    val showSeasonalWipeDialog: StateFlow<Boolean> = _showSeasonalWipeDialog.asStateFlow()
+
     private var tickCount = 0
 
     init {
+        p2pService.setDifficulty(_playerStats.value.difficulty)
+        updateP2PPlayerStats()
         checkOfflineProgress()
         startSimulationEngine()
+        // Проверка на необходимость сезонного вайпа (каждые 3 месяца)
+        if (_seasonInfo.value.isExpired) {
+            _showSeasonalWipeDialog.value = true
+        }
         // Если это первый запуск, показываем диалог первой главы
         val ch1 = _storyChapters.value.firstOrNull { it.chapterNumber == 1 && !it.isCompleted }
         if (ch1 != null && _playerStats.value.currentStoryChapter == 1 && _playerStats.value.inGameDaysPassed == 1) {
@@ -173,9 +190,19 @@ class ColorbitViewModel(application: Application) : AndroidViewModel(application
                 }
                 processMiningTick()
 
-                // Каждые 5 секунд обновляем крипто-биржу (динамический курс)
+                // Каждые 5 секунд обновляем крипто-биржу (динамический курс) и P2P статы
                 if (tickCount % 5 == 0) {
                     processMarketFluctuations()
+                    updateP2PPlayerStats()
+                }
+
+                // Проверка 3-месячного сезонного вайпа (каждые 10 секунд)
+                if (tickCount % 10 == 0) {
+                    val currentSeason = repo.loadSeasonInfo()
+                    _seasonInfo.value = currentSeason
+                    if (currentSeason.isExpired && !_showSeasonalWipeDialog.value) {
+                        _showSeasonalWipeDialog.value = true
+                    }
                 }
 
                 // Каждые 15 секунд сохраняем состояние
@@ -830,6 +857,95 @@ class ColorbitViewModel(application: Application) : AndroidViewModel(application
         p2pService.removePlayerListing(saleId)
         showNotification("Получена выплата от пира ${sale.buyerPeerName ?: "Пир"}: +$${sale.askingPriceUsd.toInt()} USD!")
         saveGameState()
+    }
+
+    fun updateP2PPlayerStats() {
+        val stats = _playerStats.value
+        val totalHash = _rigs.value.sumOf { it.totalHashRateMh }
+        p2pService.updateLocalPlayerStats(
+            name = stats.playerName,
+            hashrate = totalHash,
+            balance = stats.balanceUsd,
+            rigsCount = _rigs.value.size,
+            chapter = stats.currentStoryChapter
+        )
+    }
+
+    fun selectInitialDifficulty(difficulty: com.example.model.GameDifficulty) {
+        repo.setDifficultyChosen(true)
+        _needsInitialDifficultySelection.value = false
+        setDifficulty(difficulty)
+        showNotification("Начало игры на сложности: ${difficulty.title}")
+    }
+
+    fun resetGameProgress(newDifficulty: com.example.model.GameDifficulty) {
+        val currentName = _playerStats.value.playerName
+        repo.resetGameProgress(newDifficulty, currentName)
+
+        _playerStats.value = repo.loadPlayerStats()
+        _rigs.value = repo.loadRigs()
+        _cryptos.value = repo.getInitialCryptos()
+        _facilities.value = repo.getFacilities()
+        _quests.value = repo.getStoryQuests()
+        _storyChapters.value = repo.loadStoryChapters()
+        _loans.value = repo.loadLoans()
+
+        p2pService.wipeAllAvitoData(_seasonInfo.value.seasonNumber)
+        p2pService.setDifficulty(newDifficulty)
+        updateP2PPlayerStats()
+        _needsInitialDifficultySelection.value = false
+        showNotification("Прогресс сброшен! Начата новая игра: ${newDifficulty.title}")
+    }
+
+    fun performSeasonalWipe(newDifficulty: com.example.model.GameDifficulty) {
+        val currentName = _playerStats.value.playerName
+        val newSeason = repo.performSeasonalWipe(newDifficulty, currentName)
+        _seasonInfo.value = newSeason
+
+        _playerStats.value = repo.loadPlayerStats()
+        _rigs.value = repo.loadRigs()
+        _cryptos.value = repo.getInitialCryptos()
+        _facilities.value = repo.getFacilities()
+        _quests.value = repo.getStoryQuests()
+        _storyChapters.value = repo.loadStoryChapters()
+        _loans.value = repo.loadLoans()
+
+        p2pService.wipeAllAvitoData(newSeason.seasonNumber)
+        p2pService.setDifficulty(newDifficulty)
+        updateP2PPlayerStats()
+        _showSeasonalWipeDialog.value = false
+        _needsInitialDifficultySelection.value = false
+        showNotification("Глобальный вайп выполнен! Начался Сезон ${newSeason.seasonNumber} (${newDifficulty.title})")
+    }
+
+    fun dismissSeasonalWipeDialog() {
+        _showSeasonalWipeDialog.value = false
+    }
+
+    fun setDifficulty(difficulty: com.example.model.GameDifficulty) {
+        val stats = _playerStats.value.copy(difficulty = difficulty)
+        _playerStats.value = stats
+        p2pService.setDifficulty(difficulty)
+        updateP2PPlayerStats()
+        saveGameState()
+        val msg = when (difficulty) {
+            com.example.model.GameDifficulty.EASY -> "Сложность: ЛЁГКАЯ (Боты на Авито включены, без реальных игроков)"
+            com.example.model.GameDifficulty.NORMAL -> "Сложность: НОРМАЛЬНАЯ (Боты отключены! P2P сеть, без автопродажи)"
+            com.example.model.GameDifficulty.HARD -> "Сложность: СЛОЖНАЯ (Хардкор P2P, без ботов, без автопродажи)"
+        }
+        showNotification(msg)
+    }
+
+    fun setGameDifficulty(difficulty: com.example.model.GameDifficulty) = setDifficulty(difficulty)
+
+    fun setPlayerName(newName: String) {
+        val trimmed = newName.trim().take(20)
+        if (trimmed.isEmpty()) return
+        val stats = _playerStats.value.copy(playerName = trimmed)
+        _playerStats.value = stats
+        updateP2PPlayerStats()
+        saveGameState()
+        showNotification("P2P имя обновлено: $trimmed")
     }
 
     fun instantSellToScrapPeer(rigId: String, slotId: String) {

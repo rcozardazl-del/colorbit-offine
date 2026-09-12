@@ -218,6 +218,78 @@ enum class QuestTargetType {
     SURVIVE_DAYS
 }
 
+enum class GameDifficulty(
+    val id: String,
+    val title: String,
+    val shortName: String,
+    val colorHex: Long,
+    val description: String
+) {
+    EASY(
+        id = "EASY",
+        title = "Лёгкая",
+        shortName = "Легко",
+        colorHex = 0xFF00FF66,
+        description = "Боты на Авито, автоматические выкупы. Без реальных игроков по сети."
+    ),
+    NORMAL(
+        id = "NORMAL",
+        title = "Нормальная",
+        shortName = "Норм",
+        colorHex = 0xFFFFB300,
+        description = "Без ботов на Авито. Только реальные игроки по P2P. Продажа со спросом раз в 5 минут."
+    ),
+    HARD(
+        id = "HARD",
+        title = "Сложная",
+        shortName = "Сложно",
+        colorHex = 0xFFFF5252,
+        description = "Хардкор P2P. Без ботов, продажа раз в 5 минут, высокая сложность добычи."
+    );
+
+    companion object {
+        fun fromId(id: String?): GameDifficulty {
+            return values().firstOrNull { it.id.equals(id, ignoreCase = true) } ?: NORMAL
+        }
+    }
+}
+
+data class SeasonInfo(
+    val seasonNumber: Int = 1,
+    val seasonStartTimestampMs: Long = System.currentTimeMillis(),
+    val durationDays: Int = 90
+) {
+    val durationMs: Long
+        get() = durationDays.toLong() * 24 * 60 * 60 * 1000L
+
+    val endTimestampMs: Long
+        get() = seasonStartTimestampMs + durationMs
+
+    val remainingMs: Long
+        get() = (endTimestampMs - System.currentTimeMillis()).coerceAtLeast(0L)
+
+    val remainingDays: Long
+        get() = remainingMs / (24 * 60 * 60 * 1000L)
+
+    val remainingHours: Long
+        get() = (remainingMs % (24 * 60 * 60 * 1000L)) / (60 * 60 * 1000L)
+
+    val remainingMinutes: Long
+        get() = (remainingMs % (60 * 60 * 1000L)) / (60 * 1000L)
+
+    val formattedRemaining: String
+        get() {
+            return when {
+                remainingDays > 0 -> "${remainingDays}д ${remainingHours}ч"
+                remainingHours > 0 -> "${remainingHours}ч ${remainingMinutes}м"
+                else -> "${remainingMinutes}м"
+            }
+        }
+
+    val isExpired: Boolean
+        get() = System.currentTimeMillis() >= endTimestampMs
+}
+
 data class PlayerStats(
     var balanceUsd: Double = 350.0, // стартовый капитал
     var cryptoBalances: MutableMap<String, Double> = mutableMapOf(
@@ -233,7 +305,9 @@ data class PlayerStats(
     var inGameDaysPassed: Int = 1,
     var lastOfflineTimestampMs: Long = System.currentTimeMillis(),
     var currentStoryChapter: Int = 1,
-    var activeDebtUsd: Double = 0.0
+    var activeDebtUsd: Double = 0.0,
+    var difficulty: GameDifficulty = GameDifficulty.NORMAL,
+    var playerName: String = "Майнер-Игрок"
 )
 
 // === P2P АВИТО МОДЕЛИ (PEER-TO-PEER MARKETPLACE) ===
@@ -250,7 +324,8 @@ data class P2PListing(
     val sellerClaim: String = "Не бита, не крашена", // Что утверждает продавец в объявлении
     val sellerComment: String = "",
     val priceUsd: Double,
-    var isSold: Boolean = false
+    var isSold: Boolean = false,
+    val isRealPeer: Boolean = false // Лот от реального живого игрока в P2P сети
 ) {
     val finalPriceUsd: Double
         get() = priceUsd
@@ -262,7 +337,7 @@ data class P2PSwarmState(
     val myPeerName: String = "Майнер-Игрок",
     val peersCount: Int = 24,
     val averagePingMs: Int = 21,
-    val networkMode: String = "P2P Mesh / DHT Swarm",
+    val networkMode: String = "P2P Mesh / UDP & DHT Swarm",
     val localSubnetIp: String = "192.168.1.104",
     val isScanning: Boolean = false
 )
@@ -276,5 +351,20 @@ data class MyP2PSaleListing(
     val askingPriceUsd: Double,
     val createdAtTimestamp: Long = System.currentTimeMillis(),
     var isSold: Boolean = false,
-    var buyerPeerName: String? = null
+    var buyerPeerName: String? = null,
+    var remainingSecondsToDemandCheck: Int = 300 // Отсчёт 5 минут до шанса продажи
+)
+
+data class P2PLeaderboardEntry(
+    val peerId: String,
+    val playerName: String,
+    val hashRateMh: Double,
+    val balanceUsd: Double,
+    val rigsCount: Int,
+    val chapter: Int = 1,
+    val pingMs: Int = 18,
+    val isLocalPlayer: Boolean = false,
+    val isLanPeer: Boolean = false,
+    val difficulty: String = "NORMAL",
+    val lastSeenTimestamp: Long = System.currentTimeMillis()
 )

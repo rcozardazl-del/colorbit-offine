@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,6 +49,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -70,9 +72,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.ComponentCatalog
 import com.example.model.ComponentType
+import com.example.model.GameDifficulty
 import com.example.model.InstalledRigComponent
 import com.example.model.MiningRig
 import com.example.model.MyP2PSaleListing
+import com.example.model.P2PLeaderboardEntry
 import com.example.model.P2PListing
 import com.example.model.P2PSwarmState
 import com.example.model.PCComponent
@@ -84,6 +88,7 @@ import com.example.ui.theme.HeatRed
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.NeonOrange
+import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -91,7 +96,8 @@ import com.example.ui.theme.TextSecondary
 enum class ShopMarketTab(val title: String) {
     DHS("DHS (Новое)"),
     AVINTO("Авито P2P"),
-    LOANS("СберБит Банк")
+    LOANS("СберБит Банк"),
+    LEADERBOARD("Топ P2P")
 }
 
 enum class P2PSection(val title: String) {
@@ -109,6 +115,9 @@ fun ShopScreen(
     p2pSwarm: P2PSwarmState,
     p2pListings: List<P2PListing>,
     myP2PSales: List<MyP2PSaleListing>,
+    difficulty: GameDifficulty,
+    leaderboardEntries: List<P2PLeaderboardEntry>,
+    seasonInfo: com.example.model.SeasonInfo = com.example.model.SeasonInfo(),
     onBuyComponent: (String, PCComponent) -> Unit,
     onTakeLoan: (String) -> Unit,
     onRepayLoan: (String) -> Unit,
@@ -116,7 +125,8 @@ fun ShopScreen(
     onBuyP2PListing: (String, P2PListing) -> Unit,
     onSellComponentToP2P: (String, String, Double) -> Unit,
     onClaimSoldPayment: (String) -> Unit,
-    onInstantSellScrap: (String, String) -> Unit
+    onInstantSellScrap: (String, String) -> Unit,
+    onChangePlayerName: (String) -> Unit
 ) {
     var selectedMarket by remember { mutableStateOf(ShopMarketTab.AVINTO) }
     var selectedCategory by remember { mutableStateOf<ComponentType?>(ComponentType.GPU) }
@@ -141,6 +151,7 @@ fun ShopScreen(
                     ShopMarketTab.DHS -> NeonGreen
                     ShopMarketTab.AVINTO -> NeonOrange
                     ShopMarketTab.LOANS -> NeonCyan
+                    ShopMarketTab.LEADERBOARD -> Color(0xFFFFD700)
                 }
 
                 Box(
@@ -166,7 +177,7 @@ fun ShopScreen(
                         Text(
                             tab.title,
                             color = if (isSelected) tabColor else TextSecondary,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
                     }
@@ -183,7 +194,9 @@ fun ShopScreen(
                     p2pSwarm = p2pSwarm,
                     p2pListings = p2pListings,
                     myP2PSales = myP2PSales,
+                    difficulty = difficulty,
                     selectedCategory = selectedCategory,
+                    seasonInfo = seasonInfo,
                     onSelectCategory = { selectedCategory = it },
                     onScanP2P = onScanP2P,
                     onSelectToBuyP2P = { listingToInstallP2P = it },
@@ -209,6 +222,17 @@ fun ShopScreen(
                     loans = loans,
                     onTakeLoan = onTakeLoan,
                     onRepayLoan = onRepayLoan
+                )
+            }
+            ShopMarketTab.LEADERBOARD -> {
+                // P2P ТАБЛИЦА ЛИДЕРОВ СЕТИ
+                P2PLeaderboardScreen(
+                    leaderboardEntries = leaderboardEntries,
+                    swarmState = p2pSwarm,
+                    difficulty = difficulty,
+                    seasonInfo = seasonInfo,
+                    onScanNetwork = onScanP2P,
+                    onChangePlayerName = onChangePlayerName
                 )
             }
         }
@@ -256,7 +280,9 @@ private fun P2PAvitoMarketplaceView(
     p2pSwarm: P2PSwarmState,
     p2pListings: List<P2PListing>,
     myP2PSales: List<MyP2PSaleListing>,
+    difficulty: GameDifficulty,
     selectedCategory: ComponentType?,
+    seasonInfo: com.example.model.SeasonInfo,
     onSelectCategory: (ComponentType?) -> Unit,
     onScanP2P: () -> Unit,
     onSelectToBuyP2P: (P2PListing) -> Unit,
@@ -278,6 +304,55 @@ private fun P2PAvitoMarketplaceView(
             swarm = p2pSwarm,
             onScan = onScanP2P
         )
+
+        // Баннер 3-месячного сезонного вайпа Авито
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 5.dp),
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkCyberCard),
+            border = androidx.compose.foundation.BorderStroke(1.dp, NeonPurple.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            "СЕЗОН ${seasonInfo.seasonNumber} • ВАЙП АВИТО КАЖДЫЕ 3 МЕСЯЦА",
+                            color = Color(0xFFFFD700),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Все активные лоты, сделки и аккаунты сбрасываются раз в 3 месяца (как в оригинале)",
+                            color = TextMuted,
+                            fontSize = 9.5.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(NeonPurple.copy(alpha = 0.25f))
+                        .border(1.dp, NeonPurple, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("До вайпа", color = TextSecondary, fontSize = 8.5.sp)
+                        Text(seasonInfo.formattedRemaining, color = NeonCyan, fontSize = 10.5.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
 
         // Вкладки P2P Авито: Купить / Продать свои / Мои сделки
         Row(
@@ -382,18 +457,26 @@ private fun P2PAvitoMarketplaceView(
                                     Icon(
                                         Icons.Default.NetworkCheck,
                                         contentDescription = null,
-                                        tint = NeonOrange,
+                                        tint = if (difficulty == GameDifficulty.EASY) NeonOrange else NeonCyan,
                                         modifier = Modifier.size(42.dp)
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(
-                                        "В данной категории нет активных P2P лотов",
+                                        if (difficulty == GameDifficulty.EASY) {
+                                            "В данной категории нет активных P2P лотов"
+                                        } else {
+                                            "Боты на Авито отключены (${difficulty.title})"
+                                        },
                                         color = TextPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp
                                     )
                                     Text(
-                                        "Нажмите 'Поиск пиров' выше, чтобы найти предложения от новых майнеров!",
+                                        if (difficulty == GameDifficulty.EASY) {
+                                            "Нажмите 'Поиск пиров' выше, чтобы найти предложения от новых майнеров!"
+                                        } else {
+                                            "На ${difficulty.title.lowercase()} сложности генерация ботов отключена. Лоты поступают только от реальных игроков по локальной сети (LAN/Wi-Fi). Вы можете выставить свои комплектующие во вкладке 'Продать свои'!"
+                                        },
                                         color = TextSecondary,
                                         fontSize = 12.sp,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -428,6 +511,7 @@ private fun P2PAvitoMarketplaceView(
                 // Раздел моих активных продаж в P2P сети
                 P2PMySalesView(
                     mySales = myP2PSales,
+                    difficulty = difficulty,
                     onClaimPayment = onClaimPayment
                 )
             }
@@ -627,6 +711,17 @@ private fun P2PListingCard(
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Medium
                                 )
+                            }
+                            if (listing.isRealPeer) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(NeonCyan.copy(alpha = 0.2f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text("⚡ LAN Пир", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -913,6 +1008,7 @@ private fun P2PSellMyComponentsView(
 @Composable
 private fun P2PMySalesView(
     mySales: List<MyP2PSaleListing>,
+    difficulty: GameDifficulty,
     onClaimPayment: (String) -> Unit
 ) {
     LazyColumn(
@@ -996,14 +1092,79 @@ private fun P2PMySalesView(
                             }
                         }
                     } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                color = NeonOrange,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Ожидание встречных офферов от пиров в P2P сети...", color = NeonOrange, fontSize = 11.sp)
+                        if (difficulty == GameDifficulty.EASY) {
+                            val mm = sale.remainingSecondsToDemandCheck / 60
+                            val ss = sale.remainingSecondsToDemandCheck % 60
+                            val progress = (300 - sale.remainingSecondsToDemandCheck) / 300f
+
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.Timer,
+                                            contentDescription = null,
+                                            tint = NeonGreen,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "Выкуп ботом Авито через: %02d:%02d".format(mm, ss),
+                                            color = NeonGreen,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        "Каждые 5 мин",
+                                        color = TextMuted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = NeonGreen,
+                                    trackColor = DarkCyberBorder
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    "Сложность: Лёгкая (автопродажа ботами каждые 5 минут)",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        } else {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Wifi,
+                                        contentDescription = null,
+                                        tint = NeonCyan,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Ожидание покупателя в P2P сети LAN (Wi-Fi)",
+                                        color = NeonCyan,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "Сложность: ${difficulty.title}. Без автопродажи ботами — покупка только реальными игроками или сдача на радиорынок.",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
                     }
                 }

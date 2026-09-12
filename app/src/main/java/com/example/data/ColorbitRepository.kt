@@ -30,6 +30,8 @@ class ColorbitRepository(context: Context) {
         val lastTs = prefs.getLong("last_offline_ts", System.currentTimeMillis())
         val chapter = prefs.getInt("story_chapter", 1)
         val debt = prefs.getFloat("active_debt_usd", 0f).toDouble()
+        val diffId = prefs.getString("game_difficulty", "NORMAL")
+        val pName = prefs.getString("player_p2p_name", "Майнер-Игрок") ?: "Майнер-Игрок"
 
         return PlayerStats(
             balanceUsd = balance,
@@ -46,7 +48,9 @@ class ColorbitRepository(context: Context) {
             inGameDaysPassed = days,
             lastOfflineTimestampMs = lastTs,
             currentStoryChapter = chapter,
-            activeDebtUsd = debt
+            activeDebtUsd = debt,
+            difficulty = com.example.model.GameDifficulty.fromId(diffId),
+            playerName = pName
         )
     }
 
@@ -65,6 +69,8 @@ class ColorbitRepository(context: Context) {
             putLong("last_offline_ts", System.currentTimeMillis())
             putInt("story_chapter", stats.currentStoryChapter)
             putFloat("active_debt_usd", stats.activeDebtUsd.toFloat())
+            putString("game_difficulty", stats.difficulty.id)
+            putString("player_p2p_name", stats.playerName)
             apply()
         }
     }
@@ -542,5 +548,67 @@ class ColorbitRepository(context: Context) {
             array.put(obj)
         }
         prefs.edit().putString("loans_json", array.toString()).apply()
+    }
+
+    fun hasChosenDifficulty(): Boolean {
+        return prefs.getBoolean("has_chosen_difficulty", false)
+    }
+
+    fun setDifficultyChosen(chosen: Boolean) {
+        prefs.edit().putBoolean("has_chosen_difficulty", chosen).apply()
+    }
+
+    fun loadSeasonInfo(): com.example.model.SeasonInfo {
+        val season = prefs.getInt("season_number", 1)
+        var startTs = prefs.getLong("season_start_ts", 0L)
+        if (startTs <= 0L) {
+            startTs = System.currentTimeMillis()
+            prefs.edit().putLong("season_start_ts", startTs).apply()
+        }
+        return com.example.model.SeasonInfo(seasonNumber = season, seasonStartTimestampMs = startTs, durationDays = 90)
+    }
+
+    fun saveSeasonInfo(seasonInfo: com.example.model.SeasonInfo) {
+        prefs.edit().apply {
+            putInt("season_number", seasonInfo.seasonNumber)
+            putLong("season_start_ts", seasonInfo.seasonStartTimestampMs)
+            apply()
+        }
+    }
+
+    fun performSeasonalWipe(initialDifficulty: com.example.model.GameDifficulty, keepPlayerName: String? = null): com.example.model.SeasonInfo {
+        val currentSeason = prefs.getInt("season_number", 1)
+        val nextSeason = currentSeason + 1
+        val newStartTs = System.currentTimeMillis()
+
+        prefs.edit().clear().apply()
+        prefs.edit().apply {
+            putBoolean("has_chosen_difficulty", true)
+            putString("game_difficulty", initialDifficulty.id)
+            putInt("season_number", nextSeason)
+            putLong("season_start_ts", newStartTs)
+            if (!keepPlayerName.isNullOrBlank()) {
+                putString("player_p2p_name", keepPlayerName)
+            }
+            apply()
+        }
+        return com.example.model.SeasonInfo(seasonNumber = nextSeason, seasonStartTimestampMs = newStartTs, durationDays = 90)
+    }
+
+    fun resetGameProgress(initialDifficulty: com.example.model.GameDifficulty, keepPlayerName: String? = null) {
+        val curSeason = prefs.getInt("season_number", 1)
+        val curStartTs = prefs.getLong("season_start_ts", System.currentTimeMillis())
+
+        prefs.edit().clear().apply()
+        prefs.edit().apply {
+            putBoolean("has_chosen_difficulty", true)
+            putString("game_difficulty", initialDifficulty.id)
+            putInt("season_number", curSeason)
+            putLong("season_start_ts", curStartTs)
+            if (!keepPlayerName.isNullOrBlank()) {
+                putString("player_p2p_name", keepPlayerName)
+            }
+            apply()
+        }
     }
 }
