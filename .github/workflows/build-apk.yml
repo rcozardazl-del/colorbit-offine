@@ -24,9 +24,14 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      - name: Prepare environment files
+        run: |
+          touch .env
+          cp -n .env.example .env || true
+
       - name: Build Debug APK
         run: |
-          gradle assembleDebug --stacktrace --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=daemon -Dorg.gradle.configuration-cache=false -Dksp.incremental=false
+          gradle assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
